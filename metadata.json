@@ -1,0 +1,5 @@
+{
+  "name": "AI Video Script Polisher",
+  "description": "Upload a video or provide a link to have its audio transcribed and then professionally revised by AI. The final output is a polished, professional script with timecodes synchronized to the video.",
+  "requestFramePermissions": []
+}
