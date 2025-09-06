@@ -1,12 +1,17 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useEffect } from 'react';
 import type { TranscriptSegment } from '../types';
-import { DownloadIcon } from './icons';
+import { DownloadIcon, SparklesIcon, SpinnerIcon } from './icons';
 
 interface ComparisonTranscriptDisplayProps {
   originalTranscript: TranscriptSegment[];
   revisedTranscript: TranscriptSegment[];
   onTimestampClick: (time: number) => void;
   className?: string;
+  setOriginalTranscript: React.Dispatch<React.SetStateAction<TranscriptSegment[] | null>>;
+  setRevisedTranscript: React.Dispatch<React.SetStateAction<TranscriptSegment[] | null>>;
+  onReReviseSegment: (index: number) => void;
+  revisingSegments: Record<number, boolean>;
+  activeSegmentIndex: number;
 }
 
 const formatTime = (seconds: number): string => {
@@ -43,9 +48,63 @@ const downloadAsSrt = (transcript: TranscriptSegment[], filename: string) => {
     URL.revokeObjectURL(url);
 };
 
+// A textarea that automatically adjusts its height to fit the content
+const AutoSizingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-const ComparisonTranscriptDisplay: React.FC<ComparisonTranscriptDisplayProps> = ({ originalTranscript, revisedTranscript, onTimestampClick, className = '' }) => {
+  useLayoutEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'inherit';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${scrollHeight}px`;
+    }
+  }, [props.value]);
+
+  return <textarea ref={textareaRef} rows={1} {...props} />;
+};
+
+
+const ComparisonTranscriptDisplay: React.FC<ComparisonTranscriptDisplayProps> = ({ 
+  originalTranscript, 
+  revisedTranscript, 
+  onTimestampClick, 
+  className = '',
+  setOriginalTranscript,
+  setRevisedTranscript,
+  onReReviseSegment,
+  revisingSegments,
+  activeSegmentIndex
+}) => {
   const hasTranscripts = originalTranscript.length > 0 && revisedTranscript.length > 0;
+  const segmentRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Effect to scroll the active segment into view
+  useEffect(() => {
+    if (activeSegmentIndex >= 0 && segmentRefs.current[activeSegmentIndex]) {
+      segmentRefs.current[activeSegmentIndex]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [activeSegmentIndex]);
+
+  const handleOriginalChange = (index: number, newText: string) => {
+    setOriginalTranscript(prev => {
+        if (!prev) return null;
+        const newTranscript = [...prev];
+        newTranscript[index] = { ...newTranscript[index], text: newText };
+        return newTranscript;
+    });
+  };
+
+  const handleRevisedChange = (index: number, newText: string) => {
+      setRevisedTranscript(prev => {
+          if (!prev) return null;
+          const newTranscript = [...prev];
+          newTranscript[index] = { ...newTranscript[index], text: newText };
+          return newTranscript;
+      });
+  };
 
   return (
     <div className={`flex flex-col bg-gray-800 rounded-lg shadow-lg border border-gray-700 overflow-hidden ${className}`}>
@@ -88,22 +147,52 @@ const ComparisonTranscriptDisplay: React.FC<ComparisonTranscriptDisplayProps> = 
           ) : (
             originalTranscript.map((segment, index) => {
               const revisedSegment = revisedTranscript[index];
+              const isActive = index === activeSegmentIndex;
               return (
                 <div 
-                  key={index} 
-                  className="grid grid-cols-12 gap-4 px-4 py-3 hover:bg-gray-700/50 transition-colors"
+                  key={index}
+                  // FIX: The ref callback for an array of refs should not return a value.
+                  // The implicit return of an arrow function was causing a type error.
+                  // Wrapping the assignment in curly braces `{}` fixes this.
+                  ref={el => { segmentRefs.current[index] = el; }}
+                  className={`grid grid-cols-12 gap-4 px-4 py-3 transition-colors duration-300 ${isActive ? 'bg-indigo-900/40' : 'hover:bg-gray-700/50'}`}
                 >
                   <div 
-                    className="col-span-2 md:col-span-1 font-mono text-sm text-indigo-400 cursor-pointer"
+                    className="col-span-2 md:col-span-1 font-mono text-sm text-indigo-400 cursor-pointer pt-1"
                     onClick={() => onTimestampClick(segment.start)}
                   >
                     [{formatTime(segment.start)}]
                   </div>
                   <div className="col-span-5 md:col-span-5 text-gray-400 text-sm">
-                    {segment.text}
+                    <AutoSizingTextarea
+                        value={segment.text}
+                        onChange={(e) => handleOriginalChange(index, e.target.value)}
+                        className="w-full bg-transparent border-none focus:ring-1 focus:ring-indigo-500 rounded-md resize-none p-1 -m-1"
+                        aria-label={`Original segment ${index + 1}`}
+                    />
                   </div>
-                  <div className="col-span-5 md:col-span-6 text-gray-200 text-sm">
-                    {revisedSegment ? revisedSegment.text : <span className="text-gray-500">No revision available.</span>}
+                  <div className="col-span-5 md:col-span-6 text-gray-200 text-sm flex items-start gap-2">
+                    <AutoSizingTextarea
+                        value={revisedSegment ? revisedSegment.text : ''}
+                        onChange={(e) => handleRevisedChange(index, e.target.value)}
+                        className="w-full bg-transparent border-none focus:ring-1 focus:ring-indigo-500 rounded-md resize-none p-1 -m-1 flex-grow"
+                        aria-label={`Revised segment ${index + 1}`}
+                        disabled={!revisedSegment}
+                    />
+                     <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center pt-1">
+                      {revisingSegments[index] ? (
+                          <SpinnerIcon className="h-5 w-5 text-indigo-400" /> 
+                      ) : (
+                          <button
+                              onClick={() => onReReviseSegment(index)}
+                              className="text-gray-400 hover:text-indigo-300 transition-colors p-1 rounded-full hover:bg-gray-600/50"
+                              title="Re-apply AI revision to this segment"
+                              aria-label={`Re-revise segment ${index + 1}`}
+                          >
+                              <SparklesIcon />
+                          </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

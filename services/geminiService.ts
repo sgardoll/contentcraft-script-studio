@@ -169,3 +169,29 @@ export const transcribeAudio = async (
         throw new Error("Failed to generate a transcript from the audio. The AI may not have been able to process the audio data.");
     }
 };
+
+const SINGLE_REVISION_PROMPT = `
+You are an expert script editor for professional YouTube videos and technology-based tutorials.
+Your task is to revise a single sentence or phrase to be more professional, clear, concise, and engaging.
+- Eliminate filler words (e.g., "uh", "um", "like", "you know").
+- Correct grammatical errors and rephrase for better flow and impact.
+- Keep the tone upbeat and engaging.
+- Maintain the original meaning and intent.
+- Respond with ONLY the revised text string, no JSON, no markdown.
+
+Original Text:
+`;
+
+export const reviseSingleSegment = async (originalText: string): Promise<string> => {
+    const fullPrompt = `${SINGLE_REVISION_PROMPT}"${originalText}"`;
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: fullPrompt,
+        });
+        return response.text.trim();
+    } catch (error) {
+        console.error("Error revising single segment with Gemini:", error);
+        throw new Error("Failed to revise the segment.");
+    }
+};

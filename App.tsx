@@ -1,9 +1,9 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import VideoInput from './components/VideoInput';
 import VideoPlayer from './components/VideoPlayer';
 import ComparisonTranscriptDisplay from './components/ComparisonTranscriptDisplay';
 import { SpinnerIcon, ResetIcon } from './components/icons';
-import { reviseScriptWithAI, analyzeScriptAndVision, transcribeAudio } from './services/geminiService';
+import { reviseScriptWithAI, analyzeScriptAndVision, transcribeAudio, reviseSingleSegment } from './services/geminiService';
 import type { TranscriptSegment } from './types';
 
 // Component to display the text-based AI analysis
@@ -101,6 +101,9 @@ export default function App() {
   const [visionAnalysis, setVisionAnalysis] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const videoPlayerRef = useRef<HTMLVideoElement>(null);
+  const [revisingSegments, setRevisingSegments] = useState<Record<number, boolean>>({});
+  const [activeSegmentIndex, setActiveSegmentIndex] = useState<number>(-1);
+
 
   const resetState = useCallback(() => {
     if (videoSrc) {
@@ -113,7 +116,40 @@ export default function App() {
     setRevisedTranscript(null);
     setVisionAnalysis(null);
     setError(null);
+    setRevisingSegments({});
+    setActiveSegmentIndex(-1);
   }, [videoSrc]);
+
+  // Effect to synchronize transcript highlighting with video playback
+  useEffect(() => {
+    const videoElement = videoPlayerRef.current;
+    if (!videoElement || !originalTranscript || originalTranscript.length === 0) {
+      return;
+    }
+
+    const handleTimeUpdate = () => {
+      const currentTime = videoElement.currentTime;
+      const newIndex = originalTranscript.findIndex(
+        segment => currentTime >= segment.start && currentTime <= segment.end
+      );
+
+      setActiveSegmentIndex(currentIndex => {
+        if (newIndex !== -1 && newIndex !== currentIndex) {
+          return newIndex;
+        }
+        // If between segments, keep the last one or reset. Let's keep it for now.
+        // If newIndex is -1 but currentIndex is valid, we don't change.
+        // If we want to de-highlight between segments, we would just return newIndex.
+        return newIndex !== -1 ? newIndex : currentIndex;
+      });
+    };
+
+    videoElement.addEventListener('timeupdate', handleTimeUpdate);
+
+    return () => {
+      videoElement.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [videoSrc, originalTranscript]);
 
   const extractVideoFrames = (videoFile: File, numberOfFrames: number): Promise<string[]> => {
     return new Promise((resolve, reject) => {
@@ -260,6 +296,28 @@ export default function App() {
     }
   };
 
+  const handleReReviseSegment = useCallback(async (index: number) => {
+    if (!originalTranscript || !revisedTranscript) return;
+
+    setRevisingSegments(prev => ({ ...prev, [index]: true }));
+    setError(null);
+
+    try {
+        const originalSegmentText = originalTranscript[index].text;
+        const revisedText = await reviseSingleSegment(originalSegmentText);
+
+        const newRevisedTranscript = [...revisedTranscript];
+        newRevisedTranscript[index] = { ...newRevisedTranscript[index], text: revisedText };
+        setRevisedTranscript(newRevisedTranscript);
+
+    } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+        setError(`Failed to re-revise segment: ${errorMessage}`);
+    } finally {
+        setRevisingSegments(prev => ({ ...prev, [index]: false }));
+    }
+  }, [originalTranscript, revisedTranscript]);
+
   return (
     <main className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center p-4 sm:p-6 lg:p-8">
       {!videoSrc && !isLoading && (
@@ -308,8 +366,13 @@ export default function App() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <ComparisonTranscriptDisplay
                         originalTranscript={originalTranscript || []}
+                        setOriginalTranscript={setOriginalTranscript}
                         revisedTranscript={revisedTranscript || []}
+                        setRevisedTranscript={setRevisedTranscript}
                         onTimestampClick={handleTimestampClick}
+                        onReReviseSegment={handleReReviseSegment}
+                        revisingSegments={revisingSegments}
+                        activeSegmentIndex={activeSegmentIndex}
                         className="lg:col-span-2 h-[60vh]"
                     />
                     <AnalysisDisplay
