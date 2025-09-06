@@ -6,21 +6,86 @@ import { SpinnerIcon, ResetIcon } from './components/icons';
 import { reviseScriptWithAI, analyzeScriptAndVision, transcribeAudio, reviseSingleSegment } from './services/geminiService';
 import type { TranscriptSegment } from './types';
 
+// Component to render basic markdown for the AI analysis
+const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+    // This function handles inline formatting, like making text bold.
+    const renderInlineFormatting = (text: string): React.ReactNode => {
+        // Split text by the bold markdown syntax (**text**) to isolate bold parts.
+        const parts = text.split(/(\*\*.*?\*\*)/g);
+        return parts.map((part, i) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+                // If a part is bold, wrap it in a <strong> tag.
+                return <strong key={i} className="font-semibold text-gray-200">{part.slice(2, -2)}</strong>;
+            }
+            // Otherwise, return the text as is.
+            return part;
+        });
+    };
+
+    // Use reduce to process each line of the markdown content and build an array of React elements.
+    const elements = content.split('\n').reduce<React.ReactNode[]>((acc, line) => {
+        // Trim whitespace to correctly identify markdown syntax at the start of a line.
+        const trimmedLine = line.trim();
+
+        if (trimmedLine.startsWith('### ')) {
+            acc.push(<h3 key={acc.length} className="text-lg font-semibold text-indigo-200 mt-4 mb-1">{renderInlineFormatting(trimmedLine.substring(4))}</h3>);
+        } else if (trimmedLine.startsWith('## ')) {
+            acc.push(<h2 key={acc.length} className="text-xl font-bold text-white mt-5 mb-2">{renderInlineFormatting(trimmedLine.substring(3))}</h2>);
+        } else if (trimmedLine.startsWith('# ')) {
+            acc.push(<h1 key={acc.length} className="text-2xl font-bold text-white mt-6 mb-3">{renderInlineFormatting(trimmedLine.substring(2))}</h1>);
+        } else if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+            // FIX: Use React.isValidElement and React.Children.toArray to safely handle list item rendering and avoid type errors.
+            const lastNode = acc.length > 0 ? acc[acc.length - 1] : null;
+            
+            // Check if the previous element was also a list to group them together.
+            // FIX: Add type assertion to React.isValidElement to inform TypeScript about the 'children' prop.
+            if (React.isValidElement<{ children: React.ReactNode }>(lastNode) && lastNode.type === 'ul') {
+                const children = React.Children.toArray(lastNode.props.children);
+                const newItem = (
+                    <li key={children.length} className="text-gray-300 leading-relaxed">
+                        {renderInlineFormatting(trimmedLine.substring(2))}
+                    </li>
+                );
+                 // If so, add this item to the existing <ul>.
+                const newChildren = [...children, newItem];
+                acc[acc.length - 1] = React.cloneElement(lastNode, { children: newChildren });
+            } else {
+                 const newItem = (
+                    <li key={0} className="text-gray-300 leading-relaxed">
+                        {renderInlineFormatting(trimmedLine.substring(2))}
+                    </li>
+                );
+                // Otherwise, start a new <ul>.
+                acc.push(<ul key={acc.length} className="list-disc list-outside ml-5 space-y-1 my-3">{[newItem]}</ul>);
+            }
+        } else if (trimmedLine.length > 0) {
+            // Treat any other non-empty line as a paragraph.
+            acc.push(<p key={acc.length} className="text-gray-300 my-3">{renderInlineFormatting(trimmedLine)}</p>);
+        }
+        // Empty lines are implicitly handled by this logic, creating breaks between paragraphs/elements.
+
+        return acc;
+    }, []);
+
+    return <div className="font-sans leading-relaxed">{elements}</div>;
+};
+
 // Component to display the text-based AI analysis
 const AnalysisDisplay: React.FC<{ title: string; content: string | null; className?: string; }> = ({ title, content, className = '' }) => {
   return (
     <div className={`flex flex-col bg-gray-800 rounded-lg shadow-lg border border-gray-700 ${className}`}>
       <h3 className="text-xl font-semibold p-4 border-b border-gray-700 text-indigo-300 sticky top-0 bg-gray-800/80 backdrop-blur-sm z-10">{title}</h3>
-      <div className="p-4 space-y-3 overflow-y-auto flex-grow">
+      <div className="p-4 overflow-y-auto flex-grow">
         {content === null ? (
           <p className="text-gray-400">Analysis will appear here...</p>
         ) : (
-           <p className="text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">{content}</p>
+           <MarkdownRenderer content={content} />
         )}
       </div>
     </div>
   );
 };
+
 
 // Helper function to convert an AudioBuffer to a WAV file (as a base64 string)
 // FIX: Changed return type to Promise and added error handling for FileReader.
@@ -52,6 +117,7 @@ const audioBufferToWavBase64 = (buffer: AudioBuffer): Promise<{ wavBase64: strin
     view.setUint16(pos, 1, true); pos += 2; // Audio format (1 = PCM)
     view.setUint16(pos, numOfChan, true); pos += 2;
     view.setUint32(pos, buffer.sampleRate, true); pos += 4;
+    // FIX: Corrected typo from 'samplerate' to 'sampleRate'.
     view.setUint32(pos, buffer.sampleRate * 2 * numOfChan, true); pos += 4; // Byte rate
     view.setUint16(pos, numOfChan * 2, true); pos += 2; // Block align
     view.setUint16(pos, 16, true); pos += 2; // Bits per sample

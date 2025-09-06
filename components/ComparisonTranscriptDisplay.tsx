@@ -134,7 +134,7 @@ const ComparisonTranscriptDisplay: React.FC<ComparisonTranscriptDisplayProps> = 
       
       <div className="flex-grow overflow-y-auto">
         {/* Headers */}
-        <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-900/50 sticky top-[76px] z-10">
+        <div className="grid grid-cols-12 gap-4 py-2 bg-gray-900/50 sticky top-[76px] z-10 border-l-4 border-transparent pl-4 pr-4">
             <div className="col-span-2 md:col-span-1 font-bold text-sm text-gray-400">Time</div>
             <div className="col-span-5 md:col-span-5 font-bold text-sm text-gray-400">Original Transcript</div>
             <div className="col-span-5 md:col-span-6 font-bold text-sm text-gray-400">AI-Revised Script</div>
@@ -151,19 +151,16 @@ const ComparisonTranscriptDisplay: React.FC<ComparisonTranscriptDisplayProps> = 
               return (
                 <div 
                   key={index}
-                  // FIX: The ref callback for an array of refs should not return a value.
-                  // The implicit return of an arrow function was causing a type error.
-                  // Wrapping the assignment in curly braces `{}` fixes this.
                   ref={el => { segmentRefs.current[index] = el; }}
-                  className={`grid grid-cols-12 gap-4 px-4 py-3 transition-colors duration-300 ${isActive ? 'bg-indigo-900/40' : 'hover:bg-gray-700/50'}`}
+                  className={`grid grid-cols-12 gap-4 py-3 pr-4 pl-4 border-l-4 transition-all duration-300 ${isActive ? 'bg-indigo-800/80 border-indigo-400' : 'border-transparent hover:bg-gray-700/50'}`}
                 >
                   <div 
-                    className="col-span-2 md:col-span-1 font-mono text-sm text-indigo-400 cursor-pointer pt-1"
+                    className={`col-span-2 md:col-span-1 font-mono text-sm cursor-pointer pt-1 transition-colors ${isActive ? 'text-indigo-200 font-bold' : 'text-indigo-400'}`}
                     onClick={() => onTimestampClick(segment.start)}
                   >
                     [{formatTime(segment.start)}]
                   </div>
-                  <div className="col-span-5 md:col-span-5 text-gray-400 text-sm">
+                  <div className={`col-span-5 md:col-span-5 text-sm transition-colors ${isActive ? 'text-gray-200' : 'text-gray-400'}`}>
                     <AutoSizingTextarea
                         value={segment.text}
                         onChange={(e) => handleOriginalChange(index, e.target.value)}
@@ -171,7 +168,7 @@ const ComparisonTranscriptDisplay: React.FC<ComparisonTranscriptDisplayProps> = 
                         aria-label={`Original segment ${index + 1}`}
                     />
                   </div>
-                  <div className="col-span-5 md:col-span-6 text-gray-200 text-sm flex items-start gap-2">
+                  <div className={`col-span-5 md:col-span-6 text-sm flex items-start gap-2 transition-colors ${isActive ? 'text-white' : 'text-gray-200'}`}>
                     <AutoSizingTextarea
                         value={revisedSegment ? revisedSegment.text : ''}
                         onChange={(e) => handleRevisedChange(index, e.target.value)}
